@@ -64,7 +64,7 @@ coverage.xml
 *.sublime-project
 
 # OSMnx / data cache
-cache/
+cache_drive/
 *.osm
 *.shp
 *.geojson

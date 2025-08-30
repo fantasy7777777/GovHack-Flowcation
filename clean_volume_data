@@ -1,23 +1,28 @@
 import pandas as pd
 import os
 
-# Load the giant CSV
-file_path = "Traffic_Volumes.csv"  # change to your filename
+file_path = "Aug_Volume_Data.csv"
 df = pd.read_csv(file_path)
 
-# Define your time windows
 offpeak_cols = [f"V{i}" for i in range(40, 52)]   # 10am–1pm
 peak_cols    = [f"V{i}" for i in range(60, 72)]   # 3pm–6pm
 
-# Aggregate per site across all detectors
+# Replace negative values (like -288, -384) with NaN
+df[offpeak_cols + peak_cols] = df[offpeak_cols + peak_cols].mask(df[offpeak_cols + peak_cols] < 0)
+
+# Compute row-level totals
+df["offpeak_sum"] = df[offpeak_cols].sum(axis=1, skipna=True, min_count=1)
+df["peak_sum"]    = df[peak_cols].sum(axis=1, skipna=True, min_count=1)
+
+# Group by site with min_count again to propagate NaN instead of 0
 agg_df = df.groupby("NB_SCATS_SITE").agg(
-    offpeak_volume = (offpeak_cols, lambda x: x.sum().sum()),
-    peak_volume    = (peak_cols, lambda x: x.sum().sum())
+    offpeak_volume=("offpeak_sum", lambda x: x.sum(min_count=1)),
+    peak_volume=("peak_sum", lambda x: x.sum(min_count=1))
 ).reset_index()
 
-# Save output next to the input file
 output_path = os.path.join(os.path.dirname(file_path), "Traffic_Volumes_Summary.csv")
 agg_df.to_csv(output_path, index=False)
 
 print(f"Saved summarized volumes to {output_path}")
 print(agg_df.head())
+print(agg_df.tail())

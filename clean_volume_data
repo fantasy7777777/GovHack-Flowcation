@@ -1,0 +1,23 @@
+import pandas as pd
+import os
+
+# Load the giant CSV
+file_path = "Traffic_Volumes.csv"  # change to your filename
+df = pd.read_csv(file_path)
+
+# Define your time windows
+offpeak_cols = [f"V{i}" for i in range(40, 52)]   # 10am–1pm
+peak_cols    = [f"V{i}" for i in range(60, 72)]   # 3pm–6pm
+
+# Aggregate per site across all detectors
+agg_df = df.groupby("NB_SCATS_SITE").agg(
+    offpeak_volume = (offpeak_cols, lambda x: x.sum().sum()),
+    peak_volume    = (peak_cols, lambda x: x.sum().sum())
+).reset_index()
+
+# Save output next to the input file
+output_path = os.path.join(os.path.dirname(file_path), "Traffic_Volumes_Summary.csv")
+agg_df.to_csv(output_path, index=False)
+
+print(f"Saved summarized volumes to {output_path}")
+print(agg_df.head())

@@ -65,6 +65,8 @@ coverage.xml
 
 # OSMnx / data cache
 cache_drive/
+cache_bike/
+cache_public/
 *.osm
 *.shp
 *.geojson

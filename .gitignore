@@ -64,11 +64,6 @@ coverage.xml
 *.sublime-project
 
 # OSMnx / data cache
-cache_drive/
-cache_bike/
-cache_public/
-cache/
-cache_parkville/
 *.osm
 *.shp
 *.geojson

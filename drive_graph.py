@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Point
 import geopandas as gpd
 import pandas as pd
-import matplotlib.colors as mcolors
-import random
+
 
 
 # ----------------------------
@@ -12,6 +11,9 @@ import random
 # ----------------------------
 def graph_init(places, traffic_geojson, volume_csv):
     """Initialise graph, speeds, travel times, and inject delays."""
+
+    ox.settings.cache_folder = "cache_drive"
+
     G = ox.graph_from_place(places, network_type="drive")
 
     # Default speeds
@@ -50,8 +52,8 @@ def graph_init(places, traffic_geojson, volume_csv):
 
     # Apply delays to edges
     for node, data in G.nodes(data=True):
-        if "peak_volume" in data and data["peak_volume"] > 0:
-            delay = min(120, data["peak_volume"] / 200.0)  # cap at 2 min
+        if "offpeak_volume" in data and data["offpeak_volume"] > 0:
+            delay = min(120, data["offpeak_volume"] / 200.0)  # cap at 2 min
         else:
             delay = 10  # unsignalised default
 
@@ -81,7 +83,7 @@ def generate_ring(G, node, cutoff=20*60):
     if gdf_proj.empty:
         return reachable_nodes, gpd.GeoDataFrame(geometry=[])
 
-    hull = gdf_proj.union_all().convex_hull
+    hull = gdf_proj.buffer(150).union_all().convex_hull
     if hull.is_empty:
         return reachable_nodes, gpd.GeoDataFrame(geometry=[])
 
@@ -96,12 +98,47 @@ def plot_all_rings(G, features, cutoff=20*60):
     """Plot all school rings on one map."""
     fig, ax = ox.plot_graph(
         G,
-        node_size=1,
+        bgcolor="lightgrey",
+        node_size=0,
         node_color="lightgrey",
-        edge_color="grey",
+        edge_color="dimgrey",
         show=False,
         close=False,
     )
+
+    # --- get polygons ---
+    # Buildings
+    buildings = ox.features_from_place(places, tags={"building": True})
+    # Parks/green space
+    parks = ox.features_from_place(places, tags={"leisure": "park"})
+    # Water (rivers, lakes)
+    water = ox.features_from_place(places, tags={"natural": "water"})
+    #filter for polygons
+    parks = parks[parks.geom_type.isin(["Polygon", "MultiPolygon"])]
+    water = water[water.geom_type.isin(["Polygon", "MultiPolygon"])]
+    buildings = buildings[buildings.geom_type.isin(["Polygon", "MultiPolygon"])]
+
+    suburbs = ox.features_from_place(
+    "City of Melbourne, Victoria, Australia",
+    tags={"place": "suburb"}
+    )
+    suburbs = suburbs[suburbs.geom_type.isin(["Polygon", "MultiPolygon"])]
+    for idx, row in suburbs.iterrows():
+        centroid = row.geometry.centroid
+        ax.annotate(
+            text=row["name"], 
+            xy=(centroid.x, centroid.y),
+            fontsize=8,
+            ha="center"
+        )
+
+    # --- plot polygons ---
+    if not buildings.empty:
+        buildings.plot(ax=ax, facecolor="grey", edgecolor="none", alpha=0.6, zorder=0)
+    if not parks.empty:
+        parks.plot(ax=ax, facecolor="green", edgecolor="none", alpha=0.5, zorder=0)
+    if not water.empty:
+        water.plot(ax=ax, facecolor="blue", edgecolor="none", alpha=0.5, zorder=0)
 
     # loop over features
     for idx, row in features.iterrows():
@@ -113,33 +150,38 @@ def plot_all_rings(G, features, cutoff=20*60):
 
         # hull outline
         if not hull_gdf.empty and hull_gdf.iloc[0].geometry.geom_type == "Polygon":
-            hull_gdf.boundary.plot(ax=ax, linewidth=2, alpha=0.6)
-
+            hull_gdf.plot(
+                ax=ax,
+                facecolor="blue",   # fill color
+                edgecolor="darkblue",
+                alpha=0.10,         # transparency (0=fully transparent, 1=solid)
+                linewidth=1.5,
+                zorder=3
+            )
         # school marker
         ax.scatter(
             lon, lat,
-            c="red", s=60,
+            c="red", s=20,
             edgecolors="white", linewidth=0.8,
             zorder=5
         )
 
+    plt.savefig("Saved_Plots/drive_doctors_offpeak_map.png", dpi=300, bbox_inches="tight")
     plt.show()
 
 
 places = [
-    "Parkville, Victoria, Australia",
-    "Carlton, Victoria, Australia",
-    "Fitzroy, Victoria, Australia",
-    "North Melbourne, Victoria, Australia"
+    # testing places
+    "City of Melbourne, Victoria, Australia"
 ]
 
 # 1. Build graph with traffic delays
 G = graph_init(places, "Traffic_Lights.geojson", "Traffic_Volumes_Summary.csv")
 
 # 2. Get schools (could later swap for hospitals, shops, etc.)
-schools = ox.features_from_place(places, {"amenity": "school"})
-schools = schools.to_crs(epsg=4326)  # ensure consistency
-schools["geometry"] = schools.centroid
+schools = ox.features_from_place(places, {"amenity": "doctors"})
+schools = schools.to_crs(epsg=32755)
+schools["geometry"] = schools.centroid.to_crs(epsg=4326)
 
 # 3. Plot all schools + all their 20min rings
-plot_all_rings(G, schools, cutoff=4*60)
+plot_all_rings(G, schools, cutoff=10*60)
